@@ -172,13 +172,24 @@ esp_err_t bsp_sdcard_mount(void)
     };
 
 	sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-	host.slot = BSP_LCD_SPI_NUM;
+	//host.slot = BSP_LCD_SPI_NUM;
 	sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 	slot_config.gpio_cs = BSP_SD_CS;
 	slot_config.host_id = host.slot;
+
+    ESP_LOGD(TAG, "Initialize SPI bus");
+    const spi_bus_config_t buscfg = {
+        .sclk_io_num = BSP_LCD_PCLK,
+        .mosi_io_num = BSP_LCD_MOSI,
+        .miso_io_num = BSP_LCD_MISO,
+        .quadwp_io_num = GPIO_NUM_NC,
+        .quadhd_io_num = GPIO_NUM_NC,
+        .max_transfer_sz = (BSP_LCD_H_RES * CONFIG_BSP_LCD_DRAW_BUF_HEIGHT) * sizeof(uint16_t),
+    };
+    ESP_RETURN_ON_ERROR(spi_bus_initialize(host.slot, &buscfg, SPI_DMA_CH_AUTO), TAG, "SPI init failed");
 	
-	ESP_RETURN_ON_ERROR(bsp_spi_init((BSP_LCD_H_RES * CONFIG_BSP_LCD_DRAW_BUF_HEIGHT) * sizeof(uint16_t)), TAG, "");
-	
+	//ESP_RETURN_ON_ERROR(bsp_spi_init((BSP_LCD_H_RES * CONFIG_BSP_LCD_DRAW_BUF_HEIGHT) * sizeof(uint16_t)), TAG, "");
+		
     return esp_vfs_fat_sdspi_mount(BSP_SD_MOUNT_POINT, &host, &slot_config, &mount_config, &bsp_sdcard);
 }
 
