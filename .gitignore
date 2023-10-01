@@ -1,0 +1,13 @@
+build/
+build/*
+build_debug/
+build_debug/*
+build_release/
+build_release/*
+.settings/
+.settings/*
+/Default/
+managed_components/
+*.old
+*.lock
+sdkconfig
