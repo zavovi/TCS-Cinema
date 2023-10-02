@@ -1,11 +1,10 @@
 /*
- * SPDX-FileCopyrightText: 2022-2023 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2023 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "driver/gpio.h"
-#include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -17,9 +16,9 @@
 #include "esp_vfs_fat.h"
 #include "driver/sdmmc_host.h"
 #include "driver/sdspi_host.h"
+#include "driver/i2c.h"
 
-#include "iot_button.h"
-#include "bsp/esp-box.h"
+#include "bsp/m5stack_core_s3.h"
 #include "bsp/display.h"
 #include "bsp/touch.h"
 #include "esp_lcd_ili9341.h"
@@ -28,11 +27,10 @@
 #include "bsp_err_check.h"
 #include "esp_codec_dev_defaults.h"
 
-static const char *TAG = "ESP-BOX";
+static const char *TAG = "M5Stack";
 
-/** @cond */
-_Static_assert(CONFIG_ESP_LCD_TOUCH_MAX_BUTTONS > 0, "Touch buttons must be supported for this BSP");
-/** @endcond */
+#define BSP_AXP2101_ADDR    0x34
+#define BSP_AW9523_ADDR     0x58
 
 static lv_disp_t *disp;
 static lv_indev_t *disp_indev = NULL;
@@ -40,31 +38,6 @@ static esp_lcd_touch_handle_t tp;   // LCD touch handle
 sdmmc_card_t *bsp_sdcard = NULL;    // Global SD card handler
 static bool i2c_initialized = false;
 static bool spi_initialized = false;
-
-// This is just a wrapper to get function signature for espressif/button API callback
-static uint8_t bsp_get_main_button(void *param);
-static esp_err_t bsp_init_main_button(void *param);
-
-static const button_config_t bsp_button_config[BSP_BUTTON_NUM] = {
-    {
-        .type = BUTTON_TYPE_GPIO,
-        .gpio_button_config.gpio_num = BSP_BUTTON_CONFIG_IO,
-        .gpio_button_config.active_level = 0,
-    },
-    {
-        .type = BUTTON_TYPE_GPIO,
-        .gpio_button_config.gpio_num = BSP_BUTTON_MUTE_IO,
-        .gpio_button_config.active_level = 0,
-    },
-    {
-        .type = BUTTON_TYPE_CUSTOM,
-        .custom_button_config.button_custom_init = bsp_init_main_button,
-        .custom_button_config.button_custom_get_key_value = bsp_get_main_button,
-        .custom_button_config.button_custom_deinit = NULL,
-        .custom_button_config.active_level = 1,
-        .custom_button_config.priv = (void *) BSP_BUTTON_MAIN,
-    }
-};
 
 esp_err_t bsp_i2c_init(void)
 {
@@ -119,13 +92,6 @@ static esp_err_t bsp_spi_init(uint32_t max_transfer_sz)
     return ESP_OK;
 }
 
-static  esp_err_t bsp_spi_deinit(void)
-{
-    BSP_ERROR_CHECK_RETURN_ERR(i2c_driver_delete(BSP_I2C_NUM));
-    spi_initialized = false;
-    return ESP_OK;
-}
-
 esp_err_t bsp_spiffs_mount(void)
 {
     esp_vfs_spiffs_conf_t conf = {
@@ -171,25 +137,14 @@ esp_err_t bsp_sdcard_mount(void)
         .allocation_unit_size = 16 * 1024
     };
 
-	sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-	//host.slot = BSP_LCD_SPI_NUM;
-	sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-	slot_config.gpio_cs = BSP_SD_CS;
-	slot_config.host_id = host.slot;
+    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    host.slot = BSP_LCD_SPI_NUM;
+    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+    slot_config.gpio_cs = BSP_SD_CS;
+    slot_config.host_id = host.slot;
 
-    ESP_LOGD(TAG, "Initialize SPI bus");
-    const spi_bus_config_t buscfg = {
-        .sclk_io_num = BSP_LCD_PCLK,
-        .mosi_io_num = BSP_LCD_MOSI,
-        .miso_io_num = BSP_LCD_MISO,
-        .quadwp_io_num = GPIO_NUM_NC,
-        .quadhd_io_num = GPIO_NUM_NC,
-        .max_transfer_sz = (BSP_LCD_H_RES * CONFIG_BSP_LCD_DRAW_BUF_HEIGHT) * sizeof(uint16_t),
-    };
-    ESP_RETURN_ON_ERROR(spi_bus_initialize(host.slot, &buscfg, SPI_DMA_CH_AUTO), TAG, "SPI init failed");
-	
-	//ESP_RETURN_ON_ERROR(bsp_spi_init((BSP_LCD_H_RES * CONFIG_BSP_LCD_DRAW_BUF_HEIGHT) * sizeof(uint16_t)), TAG, "");
-		
+    ESP_RETURN_ON_ERROR(bsp_spi_init((BSP_LCD_H_RES * CONFIG_BSP_LCD_DRAW_BUF_HEIGHT) * sizeof(uint16_t)), TAG, "");
+
     return esp_vfs_fat_sdspi_mount(BSP_SD_MOUNT_POINT, &host, &slot_config, &mount_config, &bsp_sdcard);
 }
 
@@ -210,39 +165,12 @@ esp_codec_dev_handle_t bsp_audio_codec_speaker_init(void)
     }
     assert(i2s_data_if);
 
-    const audio_codec_gpio_if_t *gpio_if = audio_codec_new_gpio();
-
-    audio_codec_i2c_cfg_t i2c_cfg = {
-        .port = BSP_I2C_NUM,
-        .addr = ES8311_CODEC_DEFAULT_ADDR,
-    };
-    const audio_codec_ctrl_if_t *i2c_ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
-    BSP_NULL_CHECK(i2c_ctrl_if, NULL);
-
-    esp_codec_dev_hw_gain_t gain = {
-        .pa_voltage = 5.0,
-        .codec_dac_voltage = 3.3,
-    };
-
-    es8311_codec_cfg_t es8311_cfg = {
-        .ctrl_if = i2c_ctrl_if,
-        .gpio_if = gpio_if,
-        .codec_mode = ESP_CODEC_DEV_WORK_MODE_DAC,
-        .pa_pin = BSP_POWER_AMP_IO,
-        .pa_reverted = false,
-        .master_mode = false,
-        .use_mclk = true,
-        .digital_mic = false,
-        .invert_mclk = false,
-        .invert_sclk = false,
-        .hw_gain = gain,
-    };
-    const audio_codec_if_t *es8311_dev = es8311_codec_new(&es8311_cfg);
-    BSP_NULL_CHECK(es8311_dev, NULL);
+    uint8_t aw_val[] = { 0x97, 0b00001101 };    // AXP BLDO2 voltage / AW / 1.8 V
+    i2c_master_write_to_device(BSP_I2C_NUM, BSP_AXP2101_ADDR, aw_val, sizeof(aw_val), 1000 / portTICK_PERIOD_MS);
 
     esp_codec_dev_cfg_t codec_dev_cfg = {
         .dev_type = ESP_CODEC_DEV_TYPE_OUT,
-        .codec_if = es8311_dev,
+        .codec_if = NULL,
         .data_if = i2s_data_if,
     };
     return esp_codec_dev_new(&codec_dev_cfg);
@@ -288,26 +216,13 @@ esp_codec_dev_handle_t bsp_audio_codec_microphone_init(void)
 
 static esp_err_t bsp_display_brightness_init(void)
 {
-    // Setup LEDC peripheral for PWM backlight control
-    const ledc_channel_config_t LCD_backlight_channel = {
-        .gpio_num = BSP_LCD_BACKLIGHT,
-        .speed_mode = LEDC_LOW_SPEED_MODE,
-        .channel = LCD_LEDC_CH,
-        .intr_type = LEDC_INTR_DISABLE,
-        .timer_sel = 1,
-        .duty = 0,
-        .hpoint = 0
-    };
-    const ledc_timer_config_t LCD_backlight_timer = {
-        .speed_mode = LEDC_LOW_SPEED_MODE,
-        .duty_resolution = LEDC_TIMER_10_BIT,
-        .timer_num = 1,
-        .freq_hz = 5000,
-        .clk_cfg = LEDC_AUTO_CLK
-    };
+    /* Initilize I2C */
+    BSP_ERROR_CHECK_RETURN_ERR(bsp_i2c_init());
 
-    BSP_ERROR_CHECK_RETURN_ERR(ledc_timer_config(&LCD_backlight_timer));
-    BSP_ERROR_CHECK_RETURN_ERR(ledc_channel_config(&LCD_backlight_channel));
+    const uint8_t lcd_bl_en[] = { 0x90, 0xBF }; // AXP DLDO1 Enable
+    ESP_RETURN_ON_ERROR(i2c_master_write_to_device(BSP_I2C_NUM, BSP_AXP2101_ADDR, lcd_bl_en, sizeof(lcd_bl_en), 1000 / portTICK_PERIOD_MS), TAG, "I2C write failed");
+    const uint8_t lcd_bl_val[] = { 0x99, 0b00011000 };  // AXP DLDO1 voltage
+    ESP_RETURN_ON_ERROR(i2c_master_write_to_device(BSP_I2C_NUM, BSP_AXP2101_ADDR, lcd_bl_val, sizeof(lcd_bl_val), 1000 / portTICK_PERIOD_MS), TAG, "I2C write failed");
 
     return ESP_OK;
 }
@@ -322,9 +237,9 @@ esp_err_t bsp_display_brightness_set(int brightness_percent)
     }
 
     ESP_LOGI(TAG, "Setting LCD backlight: %d%%", brightness_percent);
-    uint32_t duty_cycle = (1023 * brightness_percent) / 100; // LEDC resolution set to 10bits, thus: 100% = 1023
-    //BSP_ERROR_CHECK_RETURN_ERR(ledc_set_duty(LEDC_LOW_SPEED_MODE, LCD_LEDC_CH, duty_cycle));
-    //BSP_ERROR_CHECK_RETURN_ERR(ledc_update_duty(LEDC_LOW_SPEED_MODE, LCD_LEDC_CH));
+    const uint8_t reg_val = 20 + ((8 * brightness_percent) / 100); // 0b00000 ~ 0b11100; under 20, it is too dark
+    const uint8_t lcd_bl_val[] = { 0x99, reg_val }; // AXP DLDO1 voltage
+    ESP_RETURN_ON_ERROR(i2c_master_write_to_device(BSP_I2C_NUM, BSP_AXP2101_ADDR, lcd_bl_val, sizeof(lcd_bl_val), 1000 / portTICK_PERIOD_MS), TAG, "I2C write failed");
 
     return ESP_OK;
 }
@@ -344,9 +259,15 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
     esp_err_t ret = ESP_OK;
     assert(config != NULL && config->max_transfer_sz > 0);
 
-    //ESP_RETURN_ON_ERROR(bsp_display_brightness_init(), TAG, "Brightness init failed");
-	
-	ESP_RETURN_ON_ERROR(bsp_spi_init(config->max_transfer_sz), TAG, "");
+    /* Initilize I2C */
+    BSP_ERROR_CHECK_RETURN_ERR(bsp_i2c_init());
+
+    /* Enable LCD */
+    const uint8_t data[] = {0x03, 0b10100011};
+    ESP_RETURN_ON_ERROR(i2c_master_write_to_device(BSP_I2C_NUM, BSP_AW9523_ADDR, data, sizeof(data), 1000 / portTICK_PERIOD_MS), TAG, "I2C write failed");
+
+    /* Initialize SPI */
+    ESP_RETURN_ON_ERROR(bsp_spi_init(config->max_transfer_sz), TAG, "");
 
     ESP_LOGD(TAG, "Install panel IO");
     const esp_lcd_panel_io_spi_config_t io_config = {
@@ -371,7 +292,7 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
     esp_lcd_panel_reset(*ret_panel);
     esp_lcd_panel_init(*ret_panel);
     esp_lcd_panel_mirror(*ret_panel, true, true);
-	esp_lcd_panel_invert_color(*ret_panel, true);
+    esp_lcd_panel_invert_color(*ret_panel, true);
     return ret;
 
 err:
@@ -429,6 +350,10 @@ esp_err_t bsp_touch_new(const bsp_touch_config_t *config, esp_lcd_touch_handle_t
     /* Initilize I2C */
     BSP_ERROR_CHECK_RETURN_ERR(bsp_i2c_init());
 
+    /* Enable Touch */
+    const uint8_t data[] = {0x02, 0b00011111};
+    ESP_RETURN_ON_ERROR(i2c_master_write_to_device(BSP_I2C_NUM, BSP_AW9523_ADDR, data, sizeof(data), 1000 / portTICK_PERIOD_MS), TAG, "I2C write failed");;
+
     /* Initialize touch */
     const esp_lcd_touch_config_t tp_cfg = {
         .x_max = BSP_LCD_H_RES,
@@ -442,7 +367,7 @@ esp_err_t bsp_touch_new(const bsp_touch_config_t *config, esp_lcd_touch_handle_t
         .flags = {
             .swap_xy = 0,
             .mirror_x = 1,
-            .mirror_y = 0,
+            .mirror_y = 1,
         },
     };
     esp_lcd_panel_io_handle_t tp_io_handle = NULL;
@@ -478,11 +403,11 @@ lv_disp_t *bsp_display_start_with_config(const bsp_display_cfg_t *cfg)
     assert(cfg != NULL);
     BSP_ERROR_CHECK_RETURN_NULL(lvgl_port_init(&cfg->lvgl_port_cfg));
 
-    //BSP_ERROR_CHECK_RETURN_NULL(bsp_display_brightness_init());
+    BSP_ERROR_CHECK_RETURN_NULL(bsp_display_brightness_init());
 
     BSP_NULL_CHECK(disp = bsp_display_lcd_init(), NULL);
 
-    //BSP_NULL_CHECK(disp_indev = bsp_display_indev_init(disp), NULL);
+    BSP_NULL_CHECK(disp_indev = bsp_display_indev_init(disp), NULL);
 
     return disp;
 }
@@ -505,101 +430,4 @@ bool bsp_display_lock(uint32_t timeout_ms)
 void bsp_display_unlock(void)
 {
     lvgl_port_unlock();
-}
-
-esp_err_t bsp_button_init(const bsp_button_t btn)
-{
-    gpio_num_t btn_io;
-    switch (btn) {
-    case BSP_BUTTON_CONFIG:
-        btn_io = BSP_BUTTON_CONFIG_IO;
-        break;
-    case BSP_BUTTON_MUTE:
-        btn_io = BSP_BUTTON_MUTE_IO;
-        break;
-    default:
-        return ESP_FAIL;
-    }
-    const gpio_config_t button_io_config = {
-        .pin_bit_mask = BIT64(btn_io),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
-    };
-    return gpio_config(&button_io_config);
-}
-
-bool bsp_button_get(const bsp_button_t btn)
-{
-    if (btn == BSP_BUTTON_MAIN) {
-#if (CONFIG_ESP_LCD_TOUCH_MAX_BUTTONS > 0)
-        uint8_t home_btn_val = 0x00;
-        assert(tp);
-
-        esp_lcd_touch_get_button_state(tp, 0, &home_btn_val);
-        return home_btn_val ? true : false;
-#else
-        ESP_LOGE(TAG, "Button main is inaccessible");
-        return false;
-#endif
-    } else {
-        gpio_num_t btn_io;
-        switch (btn) {
-        case BSP_BUTTON_CONFIG:
-            btn_io = BSP_BUTTON_CONFIG_IO;
-            break;
-        case BSP_BUTTON_MUTE:
-            btn_io = BSP_BUTTON_MUTE_IO;
-            break;
-        default:
-            return ESP_FAIL;
-        }
-        return !(bool)gpio_get_level(btn_io);
-    }
-}
-
-static uint8_t bsp_get_main_button(void *param)
-{
-    assert(tp);
-#if (CONFIG_ESP_LCD_TOUCH_MAX_BUTTONS > 0)
-    uint8_t home_btn_val = 0x00;
-    esp_lcd_touch_get_button_state(tp, 0, &home_btn_val);
-    return home_btn_val ? true : false;
-#else
-    ESP_LOGE(TAG, "Button main is inaccessible");
-    return false;
-#endif
-}
-
-static esp_err_t bsp_init_main_button(void *param)
-{
-    if (tp == NULL) {
-        BSP_ERROR_CHECK_RETURN_ERR(bsp_touch_new(NULL, &tp));
-    }
-    return ESP_OK;
-}
-
-esp_err_t bsp_iot_button_create(button_handle_t btn_array[], int *btn_cnt, int btn_array_size)
-{
-    esp_err_t ret = ESP_OK;
-    if ((btn_array_size < BSP_BUTTON_NUM) ||
-            (btn_array == NULL)) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    if (btn_cnt) {
-        *btn_cnt = 0;
-    }
-    for (int i = 0; i < BSP_BUTTON_NUM; i++) {
-        btn_array[i] = iot_button_create(&bsp_button_config[i]);
-        if (btn_array[i] == NULL) {
-            ret = ESP_FAIL;
-            break;
-        }
-        if (btn_cnt) {
-            (*btn_cnt)++;
-        }
-    }
-    return ret;
 }

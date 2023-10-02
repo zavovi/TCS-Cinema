@@ -112,12 +112,15 @@ void app_main(void)
 	bsp_i2c_init();
 	
 	uint8_t data[] = { 0x69, 0b00110101 };	// AXP CHG_LED
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x34, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
+	//i2c_master_write_to_device(BSP_I2C_NUM, 0x34, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
 	
 	uint8_t lcd_bl_en[] = { 0x90, 0xBF };	// AXP ALDO~4,BLDO0~2,DIDO1 Enable
 	i2c_master_write_to_device(BSP_I2C_NUM, 0x34, lcd_bl_en, sizeof(lcd_bl_en), 1000 / portTICK_PERIOD_MS);
-	uint8_t lcd_bl_val[] = { 0x99, 0b00011000 };	// AXP ALDO4 voltage / SD card / 3.3 V
+	uint8_t lcd_bl_val[] = { 0x99, 0b00011000 };	// AXP ALDO4 voltage / LCD / 3.3 V
 	i2c_master_write_to_device(BSP_I2C_NUM, 0x34, lcd_bl_val, sizeof(lcd_bl_val), 1000 / portTICK_PERIOD_MS);
+    
+	uint8_t aw_val[] = { 0x97, 0b00001101 };	// AXP BLDO2 voltage / AW / 1.8 V
+	i2c_master_write_to_device(BSP_I2C_NUM, 0x34, aw_val, sizeof(aw_val), 1000 / portTICK_PERIOD_MS);
 	
 	
 	/*data[0] = 0x02;
@@ -145,10 +148,11 @@ void app_main(void)
 	
 	/* Enable LCD */
 	data[0] = 0x03;
-	data[1] = 0b10100011;
+	data[1] = 0b00000010;
 	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
+    /* Enable touch, AW, ES, SD */
 	data[0] = 0x02;
-	data[1] = 0b00000100;
+	data[1] = 0b00011101;
 	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
 	
 	

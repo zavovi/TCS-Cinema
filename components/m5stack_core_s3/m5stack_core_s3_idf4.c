@@ -5,11 +5,11 @@
  */
 
 #include "esp_err.h"
-#include "bsp/esp-box.h"
+#include "bsp/m5stack_core_s3.h"
 #include "bsp_err_check.h"
 #include "esp_codec_dev_defaults.h"
 
-static const char *TAG = "ESP-BOX";
+static const char *TAG = "M5Stack";
 
 /* This configuration is used by default in bsp_audio_init() */
 #define BSP_I2S_DUPLEX_MONO_CFG(_sample_rate)                      \

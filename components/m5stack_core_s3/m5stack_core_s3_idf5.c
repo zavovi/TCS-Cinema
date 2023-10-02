@@ -5,11 +5,11 @@
  */
 
 #include "esp_err.h"
-#include "bsp/esp-box.h"
+#include "bsp/m5stack_core_s3.h"
 #include "bsp_err_check.h"
 #include "esp_codec_dev_defaults.h"
 
-static const char *TAG = "ESP-BOX";
+static const char *TAG = "M5Stack";
 
 static i2s_chan_handle_t i2s_tx_chan = NULL;
 static i2s_chan_handle_t i2s_rx_chan = NULL;

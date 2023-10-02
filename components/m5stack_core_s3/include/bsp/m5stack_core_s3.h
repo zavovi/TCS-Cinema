@@ -1,12 +1,12 @@
 /*
- * SPDX-FileCopyrightText: 2022-2023 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2023 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
  * @file
- * @brief ESP BSP: ESP-BOX
+ * @brief ESP BSP: M5Stack CoreS3
  */
 
 #pragma once
@@ -19,7 +19,6 @@
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_codec_dev.h"
-#include "iot_button.h"
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
 #include "driver/i2s.h"
@@ -34,11 +33,11 @@
 #define BSP_I2C_SDA           (GPIO_NUM_12)
 
 /* Audio */
-#define BSP_I2S_SCLK          (GPIO_NUM_NC)
-#define BSP_I2S_MCLK          (GPIO_NUM_NC)
-#define BSP_I2S_LCLK          (GPIO_NUM_NC)
-#define BSP_I2S_DOUT          (GPIO_NUM_NC) // To Codec ES8311
-#define BSP_I2S_DSIN          (GPIO_NUM_NC) // From ADC ES7210
+#define BSP_I2S_SCLK          (GPIO_NUM_34)
+#define BSP_I2S_MCLK          (GPIO_NUM_0)
+#define BSP_I2S_LCLK          (GPIO_NUM_33)
+#define BSP_I2S_DOUT          (GPIO_NUM_13) // To Codec AW88298
+#define BSP_I2S_DSIN          (GPIO_NUM_14) // From ADC ES7210
 #define BSP_POWER_AMP_IO      (GPIO_NUM_NC)
 #define BSP_MUTE_STATUS       (GPIO_NUM_NC)
 
@@ -62,17 +61,6 @@
 #define BSP_USB_POS           USBPHY_DP_NUM
 #define BSP_USB_NEG           USBPHY_DM_NUM
 
-/* Buttons */
-#define BSP_BUTTON_CONFIG_IO  (GPIO_NUM_0)
-#define BSP_BUTTON_MUTE_IO    (GPIO_NUM_1)
-
-/* Buttons */
-typedef enum {
-    BSP_BUTTON_CONFIG = 0,
-    BSP_BUTTON_MUTE,
-    BSP_BUTTON_MAIN,
-    BSP_BUTTON_NUM
-} bsp_button_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -373,57 +361,6 @@ esp_err_t bsp_display_backlight_off(void);
  * @param[in] rotation Angle of the display rotation
  */
 void bsp_display_rotate(lv_disp_t *disp, lv_disp_rot_t rotation);
-/**************************************************************************************************
- *
- * Button
- *
- * There are three buttons on ESP-BOX:
- *  - Reset:  Not programable
- *  - Config: Controls boot mode during reset. Can be programmed after application starts
- *  - Mute:   This button is wired to Logic Gates and its result is mapped to GPIO_NUM_1
- **************************************************************************************************/
-
-/**
- * @brief Set button's GPIO as input
- *
- * @param[in] btn Button to be initialized
- * @return
- *     - ESP_OK Success
- *     - ESP_ERR_INVALID_ARG Parameter error
- */
-esp_err_t bsp_button_init(const bsp_button_t btn)
-__attribute__((deprecated("use espressif/button API instead")));
-
-/**
- * @brief Get button's state
- *
- * Note: For LCD panel button which is defined as BSP_BUTTON_MAIN, bsp_display_start should
- *       be called before call this function.
- *
- * @param[in] btn Button to read
- * @return true  Button pressed
- * @return false Button released
- */
-bool bsp_button_get(const bsp_button_t btn)
-__attribute__((deprecated("use espressif/button API instead")));
-
-/**
- * @brief Initialize all buttons
- *
- * Returned button handlers must be used with espressif/button component API
- *
- * @note For LCD panel button which is defined as BSP_BUTTON_MAIN, bsp_display_start should
- *       be called before call this function.
- *
- * @param[out] btn_array      Output button array
- * @param[out] btn_cnt        Number of button handlers saved to btn_array, can be NULL
- * @param[in]  btn_array_size Size of output button array. Must be at least BSP_BUTTON_NUM
- * @return
- *     - ESP_OK               All buttons initialized
- *     - ESP_ERR_INVALID_ARG  btn_array is too small or NULL
- *     - ESP_FAIL             Underlaying iot_button_create failed
- */
-esp_err_t bsp_iot_button_create(button_handle_t btn_array[], int *btn_cnt, int btn_array_size);
 
 #ifdef __cplusplus
 }
