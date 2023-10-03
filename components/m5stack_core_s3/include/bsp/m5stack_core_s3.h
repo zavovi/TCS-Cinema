@@ -51,6 +51,20 @@
 #define BSP_LCD_BACKLIGHT     (GPIO_NUM_NC)
 #define BSP_LCD_TOUCH_INT     (GPIO_NUM_NC)
 
+/* Camera */
+#define BSP_CAMERA_XCLK      (GPIO_NUM_NC)
+#define BSP_CAMERA_PCLK      (GPIO_NUM_45)
+#define BSP_CAMERA_VSYNC     (GPIO_NUM_46)
+#define BSP_CAMERA_HSYNC     (GPIO_NUM_38)
+#define BSP_CAMERA_D0        (GPIO_NUM_39)
+#define BSP_CAMERA_D1        (GPIO_NUM_40)
+#define BSP_CAMERA_D2        (GPIO_NUM_41)
+#define BSP_CAMERA_D3        (GPIO_NUM_42)
+#define BSP_CAMERA_D4        (GPIO_NUM_15)
+#define BSP_CAMERA_D5        (GPIO_NUM_16)
+#define BSP_CAMERA_D6        (GPIO_NUM_48)
+#define BSP_CAMERA_D7        (GPIO_NUM_47)
+
 /* SD card */
 #define BSP_SD_MOSI           (GPIO_NUM_37)
 #define BSP_SD_MISO           (GPIO_NUM_35)
@@ -177,6 +191,58 @@ esp_err_t bsp_i2c_deinit(void);
 
 /**************************************************************************************************
  *
+ * Camera interface
+ *
+ * ESP32-S3-EYE is shipped with OV2640 camera module.
+ * As a camera driver, esp32-camera component is used.
+ *
+ * Example configuration:
+ * \code{.c}
+ * const camera_config_t camera_config = BSP_CAMERA_DEFAULT_CONFIG;
+ * esp_err_t err = esp_camera_init(&camera_config);
+ * \endcode
+ **************************************************************************************************/
+/**
+ * @brief Camera default configuration
+ *
+ * In this configuration we select RGB565 color format and 320x240 image size - matching the display.
+ * We use double-buffering for the best performance.
+ * Since we don't want to waste internal SRAM, we allocate the framebuffers in external PSRAM.
+ * By setting XCLK to 16MHz, we configure the esp32-camera driver to use EDMA when accessing the PSRAM.
+ *
+ * @attention I2C must be enabled by bsp_i2c_init(), before camera is initialized
+ */
+#define BSP_CAMERA_DEFAULT_CONFIG         \
+    {                                     \
+        .pin_pwdn = GPIO_NUM_NC,          \
+        .pin_reset = GPIO_NUM_NC,         \
+        .pin_xclk = BSP_CAMERA_XCLK,      \
+        .pin_sccb_sda = GPIO_NUM_NC,      \
+        .pin_sccb_scl = GPIO_NUM_NC,      \
+        .pin_d7 = BSP_CAMERA_D7,          \
+        .pin_d6 = BSP_CAMERA_D6,          \
+        .pin_d5 = BSP_CAMERA_D5,          \
+        .pin_d4 = BSP_CAMERA_D4,          \
+        .pin_d3 = BSP_CAMERA_D3,          \
+        .pin_d2 = BSP_CAMERA_D2,          \
+        .pin_d1 = BSP_CAMERA_D1,          \
+        .pin_d0 = BSP_CAMERA_D0,          \
+        .pin_vsync = BSP_CAMERA_VSYNC,    \
+        .pin_href = BSP_CAMERA_HSYNC,     \
+        .pin_pclk = BSP_CAMERA_PCLK,      \
+        .xclk_freq_hz = 16000000,         \
+        .ledc_timer = LEDC_TIMER_0,       \
+        .ledc_channel = LEDC_CHANNEL_0,   \
+        .pixel_format = PIXFORMAT_RGB565, \
+        .frame_size = FRAMESIZE_QVGA,  \
+        .jpeg_quality = 12,               \
+        .fb_count = 2,                    \
+        .fb_location = CAMERA_FB_IN_PSRAM,\
+        .sccb_i2c_port = BSP_I2C_NUM,     \
+    }
+
+/**************************************************************************************************
+ *
  * SPIFFS
  *
  * After mounting the SPIFFS, it can be accessed with stdio functions ie.:
@@ -269,7 +335,7 @@ esp_err_t bsp_sdcard_unmount(void);
  **************************************************************************************************/
 #define BSP_LCD_H_RES              (320)
 #define BSP_LCD_V_RES              (240)
-#define BSP_LCD_PIXEL_CLOCK_HZ     (20 * 1000 * 1000)
+#define BSP_LCD_PIXEL_CLOCK_HZ     (40 * 1000 * 1000)
 #define BSP_LCD_SPI_NUM            (SPI3_HOST)
 
 /**

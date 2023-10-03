@@ -127,6 +127,9 @@ esp_err_t bsp_spiffs_unmount(void)
 
 esp_err_t bsp_sdcard_mount(void)
 {
+    uint8_t sd_val[] = { 0x95, 0b00011100 };    // AXP ALDO4 voltage / SD Card / 3V3
+    i2c_master_write_to_device(BSP_I2C_NUM, BSP_AXP2101_ADDR, sd_val, sizeof(sd_val), 1000 / portTICK_PERIOD_MS);
+    
     const esp_vfs_fat_sdmmc_mount_config_t mount_config = {
 #ifdef CONFIG_BSP_SD_FORMAT_ON_MOUNT_FAIL
         .format_if_mount_failed = true,

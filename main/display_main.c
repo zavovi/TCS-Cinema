@@ -110,52 +110,6 @@ static void app_show_video_task(void *arg)
 void app_main(void)
 {
 	bsp_i2c_init();
-	
-	uint8_t data[] = { 0x69, 0b00110101 };	// AXP CHG_LED
-	//i2c_master_write_to_device(BSP_I2C_NUM, 0x34, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
-	
-	uint8_t lcd_bl_en[] = { 0x90, 0xBF };	// AXP ALDO~4,BLDO0~2,DIDO1 Enable
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x34, lcd_bl_en, sizeof(lcd_bl_en), 1000 / portTICK_PERIOD_MS);
-	uint8_t lcd_bl_val[] = { 0x99, 0b00011000 };	// AXP ALDO4 voltage / LCD / 3.3 V
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x34, lcd_bl_val, sizeof(lcd_bl_val), 1000 / portTICK_PERIOD_MS);
-    
-	uint8_t aw_val[] = { 0x97, 0b00001101 };	// AXP BLDO2 voltage / AW / 1.8 V
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x34, aw_val, sizeof(aw_val), 1000 / portTICK_PERIOD_MS);
-	
-	
-	/*data[0] = 0x02;
-	data[1] = 0b00000101;
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
-	data[0] = 0x03;
-	data[1] = 0b00000011;
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
-	data[0] = 0x04;
-	data[1] = 0b01111000;
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
-	data[0] = 0x05;
-	data[1] = 0b01011000;
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
-	data[0] = 0x11;
-	data[1] = (1 << 4);
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
-	data[0] = 0x12;
-	data[1] = 0b11111110;
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
-	data[0] = 0x13;
-	data[1] = 0b11111000;
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);*/
-	
-	
-	/* Enable LCD */
-	data[0] = 0x03;
-	data[1] = 0b00000010;
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
-    /* Enable touch, AW, ES, SD */
-	data[0] = 0x02;
-	data[1] = 0b00011101;
-	i2c_master_write_to_device(BSP_I2C_NUM, 0x58, data, sizeof(data), 1000 / portTICK_PERIOD_MS);
-	
-	
 	bsp_sdcard_mount();
     bsp_display_start();
 	
